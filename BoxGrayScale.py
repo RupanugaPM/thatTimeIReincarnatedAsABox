@@ -342,8 +342,8 @@ class Player:
         self.particles = []
         
         # Abilities
-        self.jump_available = self.abilities.get('jump', False)
         self.abilities = abilities or {}
+        self.jump_available = self.abilities.get('jump', False)
         self.double_jump_available = self.abilities.get('double_jump', False)
         self.can_double_jump = False
         self.jump_pressed = False
@@ -395,7 +395,7 @@ class Player:
         # Jumping logic
         jump_key = keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]
         
-        if jump_key and not self.jump_pressed:
+        if self.jump_available and jump_key and not self.jump_pressed:
             if self.on_ground:
                 self.vel_y = JUMP_STRENGTH
                 self.can_double_jump = self.double_jump_available
@@ -906,7 +906,7 @@ class Game:
                         'x': 600,
                         'y': 700,
                         'dialogues': {
-                            'default': "Welcome, young shadow...",
+                            'default': "You cant do anything can you? Try moving to the next door",
                             'from_1': "Back so soon? The path ahead awaits.",
                             'from_2': "You've traveled far. Rest here.",
                         }
@@ -942,7 +942,7 @@ class Game:
                         }
                     }
                 ],
-                'abilities': {}
+                'abilities': {'jump': True}
             },
             # Level 3 - Double Jump
             {
@@ -1016,7 +1016,11 @@ class Game:
         if level_index < len(self.levels):
             self.level = Level(self.levels[level_index], level_index)
             player_x, player_y = self.level.player_start
-            self.player = Player(player_x, player_y, self.level.player_abilities)
+            if self.player == None:
+                self.player = Player(player_x, player_y, self.level.player_abilities)
+            else:
+                self.player.set_position(player_x, player_y)
+                self.player.set_abilities(self.level.player_abilities)
             self.current_level = level_index
             self.state = GameState.PLAYING
             
