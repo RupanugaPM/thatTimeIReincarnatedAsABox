@@ -122,10 +122,13 @@ class Fireball:
         self.life = 60  # frames
         
     def update(self, platforms, breakable_boxes):
-        
-        self.particles = [p for p in self.particles if p.life > 0]
         for particle in self.particles:
             particle.update()
+        self.particles = [p for p in self.particles if p.life > 0]
+
+        if not self.alive:
+            return
+
         self.life -= 1
         if self.life <= 0:
             self.alive = False
@@ -156,11 +159,6 @@ class Fireball:
                        [FIRE_ORANGE, CRIMSON, MOLTEN_GOLD, EMBER_RED],
                        random.uniform(-1, 1), random.uniform(-1, 1))
             )
-            
-        # Update particles
-        self.particles = [p for p in self.particles if p.life > 0]
-        for particle in self.particles:
-            particle.update()
             
         # Out of bounds
         if (self.rect.x < -50 or self.rect.x > SCREEN_WIDTH + 50 or
@@ -638,14 +636,14 @@ class Light:
         self.flicker_timer += 0.1
         self.color_phase += 0.02
         
-        # Occasionally spawn light particles
+        """
         if random.random() < 0.15:
             angle = random.uniform(0, math.pi * 2)
             dist = random.uniform(0, 40)
             px = self.x + math.cos(angle) * dist
             py = self.y + math.sin(angle) * dist
             self.particles.append(Particle(px, py))
-            
+        """
         # Update particles
         self.particles = [p for p in self.particles if p.life > 0]
         for particle in self.particles:
@@ -698,9 +696,10 @@ class Light:
             alpha = int(255 * (1 - distance_ratio) ** 1.5)
             
             # Very warm color gradient
-            if distance_ratio < 0.3:
+            if distance_ratio < 1.2:
                 # Core: bright warm white
                 color = (255, 253, 245, alpha)
+            """
             elif distance_ratio < 0.6:
                 # Middle: golden orange
                 color_ratio = (distance_ratio - 0.3) / 0.3
@@ -715,7 +714,7 @@ class Light:
                 g_val = int(193 - color_ratio * 120)
                 b_val = int(80 - color_ratio * 80)
                 color = (r_val, g_val, b_val, alpha)
-            
+            """
             pygame.draw.circle(light_surface, color, 
                              (int(center_x), int(center_y)), r)
 
@@ -735,6 +734,7 @@ class Level:
         self.create_background_elements()
         
     def create_background_elements(self):
+        """
         # Create floating orbs
         for _ in range(20):
             self.floating_orbs.append(
@@ -751,6 +751,7 @@ class Level:
                 'twinkle': random.uniform(0, math.pi * 2),
                 'color': random.choice([WARM_WHITE, PEACH_GLOW, WARM_PINK])
             })
+        """
         
     def load_level(self, level_data):
         # Create boundary walls
@@ -938,13 +939,14 @@ class Menu:
                 
     def draw(self, screen):
         # Draw extra warm gradient background
+        """
         for y in range(SCREEN_HEIGHT):
             color_ratio = y / SCREEN_HEIGHT
             r = int(SUNSET_PURPLE[0] * (1 - color_ratio) + WARM_NIGHT[0] * color_ratio)
             g = int(SUNSET_PURPLE[1] * (1 - color_ratio) + WARM_NIGHT[1] * color_ratio)
             b = int(SUNSET_PURPLE[2] * (1 - color_ratio) + WARM_NIGHT[2] * color_ratio)
             pygame.draw.line(screen, (r, g, b), (0, y), (SCREEN_WIDTH, y))
-        
+        """
         # Draw animated fire waves
         wave_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         for i in range(5):
