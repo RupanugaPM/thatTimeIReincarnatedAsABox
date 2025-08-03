@@ -184,7 +184,7 @@ class BreakableBox:
         self.key_collected = False
         self.key_y_offset = 0
         self.key_float_phase = random.uniform(0, math.pi * 2)
-        self.is_special_flag = False
+        self.is_special_flag = is_special_flag
         
     def break_box(self):
         if not self.broken:
@@ -1251,18 +1251,21 @@ class Game:
                 'platforms': [
                     
                     #(150, 700, 900, 100) 
+                    (0, 0, 1200, 150),
+                    (0, 150, 150, 50),
                     (0, 700, 1200, 100),
                     #(150, 150, 50, 600), 
                     (150, 150, 50, 80),
-                    (150, 300, 50, 450),
-                    (1000, 150, 50, 600),
+                    (0, 300, 200, 450),
+                    (1000, 150, 200, 600),
                     (500, 500, 200, 20),
                     (200, 150, 850, 50),
                     (350, 450, 150, 20, False),  # Drop-through
                 ],
                 'player_start': (250, 660),
                 'doors': [
-                    {'x': 950, 'y': 630, 'target_level': 1, 'label': 'Next'}
+                    {'x': 950, 'y': 630, 'target_level': 1, 'label': 'Next'},
+                    {'x': 0, 'y': 230, 'target_level': -1, 'label': 'Exit'}
                 ],
                 'breakable_boxes': [
                     {'x': 130, 'y': 230, 'has_key': True, 'is_special_flag': True}
@@ -1530,11 +1533,14 @@ class Game:
             {
                 'platforms': [
                     (0, 700, 1200, 100),
+                    (0, 0, 50, 300),
+                    (0, 0, 1200, 50),
+                    (1150, 0, 50, 300),
                     #(150, 150, 50, 600),
                     (150, 150, 50, 80),
-                    (150, 300, 50, 450),
+                    (0, 300, 200, 450),
                     (1000, 150, 50, 80),
-                    (1000, 300, 50, 450),
+                    (1000, 300, 200, 450),
                     (200, 600, 200, 20),
                     (500, 500, 200, 20),
                     (650, 500, 50, 200),
@@ -1548,7 +1554,7 @@ class Game:
                 'player_start': (250, 660),
                 'doors': [
                     {'x': 850, 'y': 630, 'target_level': 2, 'label': 'Back'},
-                    {'x': 950, 'y': 630, 'target_level': 6, 'label': 'Next'}
+                    {'x': 950, 'y': 630, 'target_level': 7, 'label': 'Next'}
                 ],
                 'lights': [(300, 200), (600, 200), (900, 200)],
                 'breakable_boxes': [
@@ -1584,6 +1590,46 @@ class Game:
                     }
                 ],
                 'abilities': {'fireball': True},
+            },
+            #Level 8
+            {
+                'platforms': [
+                    (150, 700, 900, 100),
+                    (150, 150, 50, 600),
+                    (1000, 150, 50, 600),
+                    (200, 150, 850, 50)
+                ],
+                'player_start': (250, 660),
+                'doors': [
+                    {'x': 500, 'y': 630, 'target_level': 0, 'label': ''},
+                    {'x': 630, 'y': 630, 'target_level': 6, 'label': ''}
+                ],
+                'lights': [(600, 200), (200, 300), (1000, 250)],
+                'npcs': [
+                    {
+                        'x': 350,
+                        'y': 700,
+                        'dialogues': {
+                            'default': [
+                                "I never came this far...",
+                                "You've gained the power to jump.",
+                                "Use it wisely, shadow walker.",
+                                "Press SPACE to defy gravity."
+                            ],
+                            'from_0': [
+                                "You've taken your first steps.",
+                                "This power is yours now - jumping.",
+                                "But greater challenges await ahead."
+                            ],
+                            'from_2': [
+                                "Running from what lies ahead?",
+                                "The double jump proved too much?",
+                                "Sometimes retreat is wisdom."
+                            ],
+                        }
+                    }
+                ],
+                'abilities': {'jump': True}
             }
         ]
         return levels
@@ -1675,7 +1721,7 @@ class Game:
             
         for npc in self.level.npcs:
             npc.draw(surface, self.small_font)
-        """
+        
         if not self.level.lift_blur:
             self.level.draw_platforms(surface, [{
                     'rect': pygame.Rect(0, 0, 150, 800),
@@ -1689,7 +1735,6 @@ class Game:
                     'rect': pygame.Rect(1050, 0, 150, 800),
                     'solid': True
                 }])
-        """
         self.player.draw(surface)
         
         # Apply dramatic lighting
