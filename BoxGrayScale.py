@@ -176,14 +176,15 @@ class Fireball:
             screen.blit(glow_surf, (self.rect.x - 8, self.rect.y - 8))
 
 class BreakableBox:
-    def __init__(self, x, y, has_key=False):
-        self.rect = pygame.Rect(x, y, 40, 40)
+    def __init__(self, x, y, has_key=False, is_special_flag=False):
+        self.rect = pygame.Rect(x, y, 70, 70)
         self.has_key = has_key
         self.broken = False
         self.particles = []
         self.key_collected = False
         self.key_y_offset = 0
         self.key_float_phase = random.uniform(0, math.pi * 2)
+        self.is_special_flag = False
         
     def break_box(self):
         if not self.broken:
@@ -240,98 +241,217 @@ class BreakableBox:
 
 class NPC:
     def __init__(self, x, y, dialogues):
-        self.rect = pygame.Rect(x, y - 50, 30, 50)
+        self.rect = pygame.Rect(x, y - 45, 28, 45)
         self.x = x
         self.y = y
-        self.dialogues = dialogues  # Dict with keys like "from_0", "from_1", "default"
+        self.dialogues = dialogues
         self.bob_phase = random.uniform(0, math.pi * 2)
         self.show_prompt = False
         self.current_dialogue = None
         self.dialogue_timer = 0
+        self.talking = False
+        self.gesture_timer = 0
+        self.facing_player = False
+        self.arm_animation = 0
+        # Add dialogue index tracking for each key
+        self.dialogue_indices = {}
+        self.interaction_cooldown = 0
         
     def update(self, player_rect, from_level):
         # Bob animation
         self.bob_phase += 0.05
-        self.rect.y = self.y - 50 + math.sin(self.bob_phase) * 3
+        self.rect.y = self.y - 45 + math.sin(self.bob_phase) * 2
         
-        # Check proximity to player
+        # Check proximity and facing
         distance = math.sqrt((player_rect.centerx - self.rect.centerx)**2 + 
                            (player_rect.centery - self.rect.centery)**2)
         self.show_prompt = distance < 60
         
+        # Face the player when near
+        if self.show_prompt:
+            self.facing_player = player_rect.centerx > self.rect.centerx
+
+        if self.interaction_cooldown > 0:
+            self.interaction_cooldown -= 1
+        
         # Update dialogue timer
         if self.dialogue_timer > 0:
             self.dialogue_timer -= 1
+            self.talking = True
+            # Gesture animation while talking
+            self.gesture_timer += 0.15
+            self.arm_animation = math.sin(self.gesture_timer) * 20
+        else:
+            self.talking = False
+            self.arm_animation *= 0.9  # Smooth return to rest
             
-    def interact(self, from_level, current_level):
-        # Determine which dialogue to show
+    def interact(self, from_level, current_level, mouse_pos = None):
+
+        if self.interaction_cooldown > 0:
+            return
+
         key = f"from_{from_level}" if from_level != current_level else "default"
         if key not in self.dialogues:
             key = "default"
         
-        self.current_dialogue = self.dialogues.get(key, "...")
-        self.dialogue_timer = 180  # 3 seconds at 60 FPS
+        # Get the list of dialogues for this key
+        dialogue_list = self.dialogues.get(key, ["..."])
+        
+        # Ensure dialogue_list is actually a list
+        if isinstance(dialogue_list, str):
+            dialogue_list = [dialogue_list]
+        
+        # Initialize index for this key if not exists
+        if key not in self.dialogue_indices:
+            self.dialogue_indices[key] = 0
+            
+        print(mouse_pos)
+
+        # Get current dialogue and increment index
+        self.current_dialogue = dialogue_list[self.dialogue_indices[key]]
+        self.dialogue_indices[key] = (self.dialogue_indices[key] + 1) % len(dialogue_list)
+        
+        self.dialogue_timer = 180
+        self.gesture_timer = 0
+        self.interaction_cooldown = 20
         
     def draw(self, screen, font):
-        # Draw NPC silhouette
-        # Body
-        body_rect = pygame.Rect(self.rect.x + 5, self.rect.y + 20, 20, 30)
-        pygame.draw.ellipse(screen, SILHOUETTE, body_rect)
+        cx = self.rect.centerx
+        cy = self.rect.centery
         
-        # Head
-        head_rect = pygame.Rect(self.rect.x + 8, self.rect.y + 5, 14, 18)
-        pygame.draw.ellipse(screen, SILHOUETTE, head_rect)
+        # Head (hood-like shape for mysterious look)
+        head_points = [
+            (cx - 8, self.rect.y + 8),
+            (cx - 6, self.rect.y + 2),
+            (cx, self.rect.y),
+            (cx + 6, self.rect.y + 2),
+            (cx + 8, self.rect.y + 8),
+            (cx + 7, self.rect.y + 14),
+            (cx - 7, self.rect.y + 14)
+        ]
+        pygame.draw.polygon(screen, SILHOUETTE, head_points)
         
-        # Arms
-        pygame.draw.line(screen, SILHOUETTE, 
-                        (self.rect.x + 5, self.rect.y + 25),
-                        (self.rect.x - 2, self.rect.y + 35), 3)
-        pygame.draw.line(screen, SILHOUETTE, 
-                        (self.rect.x + 25, self.rect.y + 25),
-                        (self.rect.x + 32, self.rect.y + 35), 3)
+        # Inner head shadow (for depth)
+        inner_head = pygame.Rect(cx - 5, self.rect.y + 6, 10, 8)
+        pygame.draw.ellipse(screen, DARK_GRAY, inner_head)
+        
+        # Cloak/robe body
+        body_points = [
+            (cx - 7, self.rect.y + 14),
+            (cx + 7, self.rect.y + 14),
+            (cx + 10, self.rect.y + 25),
+            (cx + 12, self.rect.bottom - 2),
+            (cx - 12, self.rect.bottom - 2),
+            (cx - 10, self.rect.y + 25)
+        ]
+        pygame.draw.polygon(screen, SILHOUETTE, body_points)
+        
+        # Arms based on state
+        if self.talking:
+            # Animated gesturing
+            if self.facing_player:
+                # Right arm gesturing
+                gesture_angle = self.arm_animation
+                pygame.draw.lines(screen, SILHOUETTE, False,
+                                [(cx + 7, self.rect.y + 20),
+                                 (cx + 12 + gesture_angle * 0.3, self.rect.y + 24),
+                                 (cx + 14 + gesture_angle * 0.5, self.rect.y + 22 - abs(gesture_angle) * 0.2)], 3)
+                # Left arm at side
+                pygame.draw.lines(screen, SILHOUETTE, False,
+                                [(cx - 7, self.rect.y + 20),
+                                 (cx - 9, self.rect.y + 28),
+                                 (cx - 8, self.rect.y + 35)], 3)
+            else:
+                # Left arm gesturing
+                gesture_angle = self.arm_animation
+                pygame.draw.lines(screen, SILHOUETTE, False,
+                                [(cx - 7, self.rect.y + 20),
+                                 (cx - 12 - gesture_angle * 0.3, self.rect.y + 24),
+                                 (cx - 14 - gesture_angle * 0.5, self.rect.y + 22 - abs(gesture_angle) * 0.2)], 3)
+                # Right arm at side
+                pygame.draw.lines(screen, SILHOUETTE, False,
+                                [(cx + 7, self.rect.y + 20),
+                                 (cx + 9, self.rect.y + 28),
+                                 (cx + 8, self.rect.y + 35)], 3)
+        else:
+            # Arms in cloak (mysterious pose)
+            # Just hints of arms
+            pygame.draw.arc(screen, DARK_GRAY, 
+                          (cx - 10, self.rect.y + 20, 20, 15), 
+                          math.pi * 0.2, math.pi * 0.8, 2)
+        
+        # Staff (optional mystical element)
+        if not self.talking:
+            staff_x = cx - 15 if not self.facing_player else cx + 15
+            pygame.draw.line(screen, SILHOUETTE,
+                           (staff_x, self.rect.y + 5),
+                           (staff_x, self.rect.bottom + 5), 3)
+            # Staff top
+            pygame.draw.circle(screen, SILHOUETTE, (staff_x, self.rect.y + 5), 5)
+            pygame.draw.circle(screen, DARK_GRAY, (staff_x, self.rect.y + 5), 3)
         
         # Show interaction prompt
         if self.show_prompt and self.dialogue_timer <= 0:
-            # E key prompt
-            prompt_surf = pygame.Surface((30, 30), pygame.SRCALPHA)
-            pygame.draw.rect(prompt_surf, (*WHITE, 100), (0, 0, 30, 30), border_radius=5)
-            pygame.draw.rect(prompt_surf, SILHOUETTE, (5, 5, 20, 20), border_radius=3)
+            # Glowing E prompt
+            prompt_y = self.rect.y - 35
             
-            e_text = font.render("E", True, WHITE)
-            prompt_surf.blit(e_text, (15 - e_text.get_width()//2, 15 - e_text.get_height()//2))
+            # Glow effect
+            for i in range(15, 0, -3):
+                alpha = int(80 * (i / 15))
+                glow_surf = pygame.Surface((30, 30), pygame.SRCALPHA)
+                pygame.draw.circle(glow_surf, (*WHITE, alpha), (15, 15), i)
+                screen.blit(glow_surf, (cx - 15, prompt_y - 15))
             
-            screen.blit(prompt_surf, (self.rect.centerx - 15, self.rect.y - 40))
+            # E key box
+            prompt_surf = pygame.Surface((24, 24), pygame.SRCALPHA)
+            pygame.draw.rect(prompt_surf, SILHOUETTE, (0, 0, 24, 24), border_radius=4)
+            pygame.draw.rect(prompt_surf, WHITE, (2, 2, 20, 20), border_radius=3)
+            
+            e_text = font.render("E", True, SILHOUETTE)
+            prompt_surf.blit(e_text, (12 - e_text.get_width()//2, 12 - e_text.get_height()//2))
+            
+            screen.blit(prompt_surf, (cx - 12, prompt_y - 12))
         
         # Show dialogue
         if self.dialogue_timer > 0 and self.current_dialogue:
-            # Dialogue bubble
+            # Speech bubble with fade in/out
+            alpha = min(255, self.dialogue_timer * 8) if self.dialogue_timer < 30 else 255
+            
             dialogue_text = font.render(self.current_dialogue, True, SILHOUETTE)
             bubble_width = dialogue_text.get_width() + 20
             bubble_height = dialogue_text.get_height() + 16
             
-            bubble_surf = pygame.Surface((bubble_width, bubble_height), pygame.SRCALPHA)
-            pygame.draw.rect(bubble_surf, (*WHITE, 200), (0, 0, bubble_width, bubble_height), border_radius=10)
-            pygame.draw.rect(bubble_surf, SILHOUETTE, (0, 0, bubble_width, bubble_height), 2, border_radius=10)
+            bubble_surf = pygame.Surface((bubble_width, bubble_height + 10), pygame.SRCALPHA)
             
-            # Tail
+            # Bubble body
+            pygame.draw.rect(bubble_surf, (*WHITE, int(alpha * 0.9)), 
+                           (0, 0, bubble_width, bubble_height), 
+                           border_radius=10)
+            pygame.draw.rect(bubble_surf, (*SILHOUETTE, alpha), 
+                           (0, 0, bubble_width, bubble_height), 2, 
+                           border_radius=10)
+            
+            # Tail pointing to speaker
+            tail_x = 20 if not self.facing_player else bubble_width - 20
             tail_points = [
-                (20, bubble_height),
-                (30, bubble_height),
-                (15, bubble_height + 10)
+                (tail_x - 10, bubble_height),
+                (tail_x + 10, bubble_height),
+                (tail_x, bubble_height + 10)
             ]
-            pygame.draw.polygon(bubble_surf, (*WHITE, 200), tail_points)
-            pygame.draw.lines(bubble_surf, SILHOUETTE, False, tail_points[0:2], 2)
-            pygame.draw.lines(bubble_surf, SILHOUETTE, False, tail_points[1:3], 2)
+            pygame.draw.polygon(bubble_surf, (*WHITE, int(alpha * 0.9)), tail_points)
+            pygame.draw.lines(bubble_surf, (*SILHOUETTE, alpha), False, 
+                            [tail_points[0], tail_points[2], tail_points[1]], 2)
             
+            dialogue_text.set_alpha(alpha)
             bubble_surf.blit(dialogue_text, (10, 8))
             
-            bubble_x = self.rect.centerx - bubble_width // 2
+            bubble_x = cx - bubble_width // 2
             bubble_y = self.rect.y - bubble_height - 20
             screen.blit(bubble_surf, (bubble_x, bubble_y))
 
 class Player:
     def __init__(self, x, y, abilities=None):
-        self.rect = pygame.Rect(x, y, 25, 40)
+        self.rect = pygame.Rect(x, y, 24, 36)
         self.vel_y = 0
         self.vel_x = 0
         self.on_ground = False
@@ -340,6 +460,19 @@ class Player:
         self.drop_timer = 0
         self.drop_key_pressed = False
         self.particles = []
+        
+        # Animation states
+        self.animation_state = "idle"  # idle, walking, jumping, falling, landing
+        self.animation_timer = 0
+        self.walk_cycle = 0
+        self.land_timer = 0
+        self.idle_timer = 0
+        self.facing_right = True
+        
+        # Body parts positions (relative to rect)
+        self.head_offset = 0
+        self.arm_swing = 0
+        self.leg_spread = 0
         
         # Abilities
         self.abilities = abilities or {}
@@ -350,7 +483,6 @@ class Player:
         self.can_fireball = self.abilities.get('fireball', False)
         self.fireballs = []
         self.fireball_cooldown = 0
-        self.facing_right = True
         
         # Keys collected
         self.keys = 0
@@ -368,8 +500,10 @@ class Player:
         
     def update(self, platforms, mouse_pos):
         keys = pygame.key.get_pressed()
+        old_vel_x = self.vel_x
         self.vel_x = 0
         
+        # Movement
         if keys[pygame.K_LEFT] or keys[pygame.K_a]:
             self.vel_x = -PLAYER_SPEED
             self.facing_right = False
@@ -377,13 +511,50 @@ class Player:
             self.vel_x = PLAYER_SPEED
             self.facing_right = True
             
-        # Drop through platforms - fixed logic
+        # Update animation state
+        if self.land_timer > 0:
+            self.animation_state = "landing"
+            self.land_timer -= 1
+        elif not self.on_ground:
+            if self.vel_y < -2:
+                self.animation_state = "jumping"
+            else:
+                self.animation_state = "falling"
+        elif abs(self.vel_x) > 0:
+            self.animation_state = "walking"
+        else:
+            self.animation_state = "idle"
+            
+        # Update animation timers
+        self.animation_timer += 1
+        
+        # Walking animation
+        if self.animation_state == "walking":
+            self.walk_cycle += abs(self.vel_x) * 0.15  # Slightly slower for smoother animation
+            self.arm_swing = math.sin(self.walk_cycle) * 12  # Reduced swing
+            self.head_offset = abs(math.sin(self.walk_cycle * 2)) * 0.5  # Subtle bob
+        else:
+            self.walk_cycle = 0
+            self.arm_swing *= 0.85  # Smoother transition
+            
+        # Idle animation
+        if self.animation_state == "idle":
+            self.idle_timer += 0.04
+            self.head_offset = math.sin(self.idle_timer) * 0.3  # Subtle breathing
+            
+        # Jump animation - more subtle arm positions
+        if self.animation_state == "jumping":
+            self.arm_swing = -8  # Arms slightly up, not too wide
+        elif self.animation_state == "falling":
+            self.arm_swing = 12  # Arms slightly out for balance
+            
+        # Drop through platforms
         drop_key = keys[pygame.K_s] or keys[pygame.K_DOWN]
         
         if drop_key and not self.drop_key_pressed and self.on_drop_platform:
             self.dropping = True
             self.drop_timer = 10
-            self.vel_y = 2  # Small downward velocity to ensure drop
+            self.vel_y = 2
             
         self.drop_key_pressed = drop_key
             
@@ -433,6 +604,9 @@ class Player:
         if self.vel_y > 20:
             self.vel_y = 20
             
+        # Check if landing
+        was_falling = not self.on_ground and self.vel_y > 5
+            
         # Move horizontally
         self.rect.x += self.vel_x
         self.rect.x = max(0, min(self.rect.x, SCREEN_WIDTH - self.rect.width))
@@ -443,6 +617,15 @@ class Player:
         self.on_ground = False
         self.on_drop_platform = False
         self.check_collisions(platforms, 'vertical')
+        
+        # Landing animation
+        if self.on_ground and was_falling:
+            self.land_timer = 8
+            for _ in range(6):
+                self.particles.append(DustParticle(
+                    self.rect.centerx + random.randint(-12, 12), 
+                    self.rect.bottom
+                ))
         
         # Update particles
         self.particles = [p for p in self.particles if p.life > 0]
@@ -468,26 +651,17 @@ class Player:
                             self.rect.left = platform_rect.right
                 else:  # vertical
                     if is_drop_platform:
-                        # Only collide with drop platforms when falling and not dropping
                         if self.vel_y > 0 and not self.dropping:
-                            # Check if player was above platform
                             if self.rect.bottom - self.vel_y <= platform_rect.top + 5:
                                 self.rect.bottom = platform_rect.top
                                 self.vel_y = 0
                                 self.on_ground = True
                                 self.on_drop_platform = True
                     else:
-                        # Solid platforms
                         if self.vel_y > 0:
                             self.rect.bottom = platform_rect.top
                             self.vel_y = 0
                             self.on_ground = True
-                            if abs(self.vel_y) > 5:
-                                for _ in range(4):
-                                    self.particles.append(DustParticle(
-                                        self.rect.centerx + random.randint(-10, 10), 
-                                        self.rect.bottom
-                                    ))
                         else:
                             self.rect.top = platform_rect.bottom
                             self.vel_y = 0
@@ -496,39 +670,221 @@ class Player:
         # Draw particles
         for particle in self.particles:
             particle.draw(screen)
-            
+        
         # Draw fireballs
         for fireball in self.fireballs:
             fireball.draw(screen)
+        
+        # Character position
+        cx = self.rect.centerx
+        cy = self.rect.centery
+    
+        # Head position with animation
+        head_y = self.rect.y + 5 + self.head_offset
+        if self.animation_state == "landing":
+            head_y += 2  # Slight crouch on landing
+    
+        # Define outline width
+        outline_width = 1
+        outline_color = WHITE
+    
+        # Helper function to draw with outline
+        def draw_with_outline(draw_func):
+            # Draw white outline by drawing the shape multiple times with small offsets
+            for dx in range(-outline_width, outline_width + 1):
+                for dy in range(-outline_width, outline_width + 1):
+                    if dx != 0 or dy != 0:
+                        draw_func(dx, dy, outline_color)
+            # Draw the black silhouette on top
+            draw_func(0, 0, SILHOUETTE)
+    
+        # Draw character with dynamic poses
+        # Head (circular, proportional)
+        def draw_head(offset_x, offset_y, color):
+            head_rect = pygame.Rect(cx - 5 + offset_x, head_y + offset_y, 10, 10)
+            pygame.draw.ellipse(screen, color, head_rect)
+        draw_with_outline(draw_head)
+    
+        # Neck (short connection)
+        def draw_neck(offset_x, offset_y, color):
+            pygame.draw.line(screen, color,
+                            (cx + offset_x, head_y + 10 + offset_y),
+                            (cx + offset_x, self.rect.y + 16 + offset_y), 2)
+        draw_with_outline(draw_neck)
+    
+        # Torso (subtle lean when walking)
+        torso_lean = self.vel_x * 0.015 if self.animation_state == "walking" else 0
+        torso_top = (cx + torso_lean * 3, self.rect.y + 16)
+        torso_bottom = (cx - torso_lean * 2, self.rect.y + 28)
+    
+        # Draw torso as tapered shape
+        def draw_torso(offset_x, offset_y, color):
+            torso_points = [
+                (torso_top[0] - 5 + offset_x, torso_top[1] + offset_y),
+                (torso_top[0] + 5 + offset_x, torso_top[1] + offset_y),
+                (torso_bottom[0] + 4 + offset_x, torso_bottom[1] + offset_y),
+                (torso_bottom[0] - 4 + offset_x, torso_bottom[1] + offset_y)
+            ]
+            pygame.draw.polygon(screen, color, torso_points)
+        draw_with_outline(draw_torso)
+    
+        # Arms with more natural animation
+        if self.can_fireball and self.fireball_cooldown > 10:
+            # Casting pose - arm extended forward
+            if self.facing_right:
+                # Right arm extended
+                def draw_right_arm_cast(offset_x, offset_y, color):
+                    pygame.draw.lines(screen, color, False,
+                                    [(cx + 4 + offset_x, self.rect.y + 18 + offset_y),
+                                     (cx + 10 + offset_x, self.rect.y + 20 + offset_y),
+                                     (cx + 16 + offset_x, self.rect.y + 19 + offset_y)], 3)
+                draw_with_outline(draw_right_arm_cast)
             
-        # Draw player silhouette
-        # Body
-        body_rect = pygame.Rect(self.rect.x + 3, self.rect.y + 15, 19, 25)
-        pygame.draw.ellipse(screen, SILHOUETTE, body_rect)
+                # Left arm relaxed
+                def draw_left_arm_cast(offset_x, offset_y, color):
+                    pygame.draw.lines(screen, color, False,
+                                    [(cx - 4 + offset_x, self.rect.y + 18 + offset_y),
+                                     (cx - 6 + offset_x, self.rect.y + 24 + offset_y),
+                                     (cx - 5 + offset_x, self.rect.y + 30 + offset_y)], 3)
+                draw_with_outline(draw_left_arm_cast)
+            else:
+                # Left arm extended
+                def draw_left_arm_cast(offset_x, offset_y, color):
+                    pygame.draw.lines(screen, color, False,
+                                    [(cx - 4 + offset_x, self.rect.y + 18 + offset_y),
+                                     (cx - 10 + offset_x, self.rect.y + 20 + offset_y),
+                                     (cx - 16 + offset_x, self.rect.y + 19 + offset_y)], 3)
+                draw_with_outline(draw_left_arm_cast)
+            
+                # Right arm relaxed
+                def draw_right_arm_cast(offset_x, offset_y, color):
+                    pygame.draw.lines(screen, color, False,
+                                    [(cx + 4 + offset_x, self.rect.y + 18 + offset_y),
+                                     (cx + 6 + offset_x, self.rect.y + 24 + offset_y),
+                                     (cx + 5 + offset_x, self.rect.y + 30 + offset_y)], 3)
+                draw_with_outline(draw_right_arm_cast)
+        else:
+            # Normal arms with natural swing
+            # Left arm
+            left_shoulder = (cx - 4, self.rect.y + 18)
+            left_elbow_x = cx - 5 - self.arm_swing * 0.2
+            left_elbow_y = self.rect.y + 24
+            left_hand_x = cx - 4 - self.arm_swing * 0.4
+            left_hand_y = self.rect.y + 30
         
-        # Head
-        head_rect = pygame.Rect(self.rect.x + 5, self.rect.y, 15, 18)
-        pygame.draw.ellipse(screen, SILHOUETTE, head_rect)
+            def draw_left_arm(offset_x, offset_y, color):
+                pygame.draw.lines(screen, color, False,
+                                [(left_shoulder[0] + offset_x, left_shoulder[1] + offset_y), 
+                                 (left_elbow_x + offset_x, left_elbow_y + offset_y), 
+                                 (left_hand_x + offset_x, left_hand_y + offset_y)], 3)
+            draw_with_outline(draw_left_arm)
         
-        # Legs with walking animation
-        leg_offset = abs(int(self.vel_x)) % 10 if self.vel_x != 0 else 0
-        # Left leg
-        pygame.draw.line(screen, SILHOUETTE,
-                        (self.rect.x + 8, self.rect.y + 35),
-                        (self.rect.x + 6 - leg_offset//3, self.rect.bottom), 4)
-        # Right leg
-        pygame.draw.line(screen, SILHOUETTE,
-                        (self.rect.x + 17, self.rect.y + 35),
-                        (self.rect.x + 19 + leg_offset//3, self.rect.bottom), 4)
+            # Right arm
+            right_shoulder = (cx + 4, self.rect.y + 18)
+            right_elbow_x = cx + 5 + self.arm_swing * 0.2
+            right_elbow_y = self.rect.y + 24
+            right_hand_x = cx + 4 + self.arm_swing * 0.4
+            right_hand_y = self.rect.y + 30
         
-        # Arms
-        pygame.draw.line(screen, SILHOUETTE,
-                        (self.rect.x + 3, self.rect.y + 20),
-                        (self.rect.x - 2, self.rect.y + 30), 3)
-        pygame.draw.line(screen, SILHOUETTE,
-                        (self.rect.x + 22, self.rect.y + 20),
-                        (self.rect.x + 27, self.rect.y + 30), 3)
+            def draw_right_arm(offset_x, offset_y, color):
+                pygame.draw.lines(screen, color, False,
+                                [(right_shoulder[0] + offset_x, right_shoulder[1] + offset_y), 
+                                 (right_elbow_x + offset_x, right_elbow_y + offset_y), 
+                                 (right_hand_x + offset_x, right_hand_y + offset_y)], 3)
+            draw_with_outline(draw_right_arm)
+    
+        # Legs with natural walking animation
+        hip_y = self.rect.y + 28
+    
+        if self.animation_state == "landing":
+            # Slightly bent legs
+            def draw_landing_legs(offset_x, offset_y, color):
+                # Left leg
+                pygame.draw.lines(screen, color, False,
+                                [(cx - 3 + offset_x, hip_y + offset_y),
+                                 (cx - 5 + offset_x, hip_y + 4 + offset_y),
+                                 (cx - 6 + offset_x, self.rect.bottom + offset_y)], 4)
+                # Right leg
+                pygame.draw.lines(screen, color, False,
+                                [(cx + 3 + offset_x, hip_y + offset_y),
+                                 (cx + 5 + offset_x, hip_y + 4 + offset_y),
+                                 (cx + 6 + offset_x, self.rect.bottom + offset_y)], 4)
+            draw_with_outline(draw_landing_legs)
         
+        elif self.animation_state == "jumping":
+            # Legs slightly tucked
+            def draw_jumping_legs(offset_x, offset_y, color):
+                # Left leg
+                pygame.draw.lines(screen, color, False,
+                                [(cx - 3 + offset_x, hip_y + offset_y),
+                                 (cx - 4 + offset_x, hip_y + 5 + offset_y),
+                                 (cx - 3 + offset_x, hip_y + 8 + offset_y)], 4)
+                # Right leg
+                pygame.draw.lines(screen, color, False,
+                                [(cx + 3 + offset_x, hip_y + offset_y),
+                                 (cx + 4 + offset_x, hip_y + 5 + offset_y),
+                                 (cx + 3 + offset_x, hip_y + 8 + offset_y)], 4)
+            draw_with_outline(draw_jumping_legs)
+        
+        elif self.animation_state == "falling":
+            # Legs slightly spread
+            def draw_falling_legs(offset_x, offset_y, color):
+                # Left leg
+                pygame.draw.lines(screen, color, False,
+                                [(cx - 3 + offset_x, hip_y + offset_y),
+                                 (cx - 5 + offset_x, hip_y + 6 + offset_y),
+                                 (cx - 6 + offset_x, hip_y + 10 + offset_y)], 4)
+                # Right leg
+                pygame.draw.lines(screen, color, False,
+                                [(cx + 3 + offset_x, hip_y + offset_y),
+                                 (cx + 5 + offset_x, hip_y + 6 + offset_y),
+                                 (cx + 6 + offset_x, hip_y + 10 + offset_y)], 4)
+            draw_with_outline(draw_falling_legs)
+        
+        else:
+            # Walking/standing with proper alternating leg movement
+            if self.animation_state == "walking":
+                # Create proper walking cycle with opposite leg phases
+                left_phase = math.sin(self.walk_cycle)
+                right_phase = math.sin(self.walk_cycle + math.pi)  # Opposite phase
+            
+                def draw_walking_legs(offset_x, offset_y, color):
+                    # Left leg
+                    left_knee_offset = max(0, left_phase) * 4  # Only forward movement
+                    left_knee_height = abs(left_phase) * 2  # Knee lift
+                    left_foot_offset = left_phase * 6
+                
+                    pygame.draw.lines(screen, color, False,
+                                    [(cx - 3 + offset_x, hip_y + offset_y),
+                                     (cx - 3 + left_knee_offset + offset_x, hip_y + 6 - left_knee_height + offset_y),
+                                     (cx - 3 + left_foot_offset + offset_x, self.rect.bottom + offset_y)], 4)
+                
+                    # Right leg
+                    right_knee_offset = max(0, right_phase) * 4
+                    right_knee_height = abs(right_phase) * 2
+                    right_foot_offset = right_phase * 6
+                
+                    pygame.draw.lines(screen, color, False,
+                                    [(cx + 3 + offset_x, hip_y + offset_y),
+                                     (cx + 3 + right_knee_offset + offset_x, hip_y + 6 - right_knee_height + offset_y),
+                                     (cx + 3 + right_foot_offset + offset_x, self.rect.bottom + offset_y)], 4)
+                draw_with_outline(draw_walking_legs)
+            else:
+                # Standing still - straight legs
+                def draw_standing_legs(offset_x, offset_y, color):
+                    # Left leg
+                    pygame.draw.lines(screen, color, False,
+                                    [(cx - 3 + offset_x, hip_y + offset_y),
+                                     (cx - 3 + offset_x, hip_y + 6 + offset_y),
+                                     (cx - 4 + offset_x, self.rect.bottom + offset_y)], 4)
+                
+                    # Right leg
+                    pygame.draw.lines(screen, color, False,
+                                    [(cx + 3 + offset_x, hip_y + offset_y),
+                                     (cx + 3 + offset_x, hip_y + 6 + offset_y),
+                                     (cx + 4 + offset_x, self.rect.bottom + offset_y)], 4)
+                draw_with_outline(draw_standing_legs)
+    
         # Double jump indicator
         if self.double_jump_available and self.can_double_jump and not self.on_ground:
             indicator_surf = pygame.Surface((30, 30), pygame.SRCALPHA)
@@ -642,6 +998,7 @@ class Level:
         self.fog_particles = []
         self.npcs = []
         self.load_level(level_data)
+        self.lift_blur = False
         
         # Create fog particles
         for _ in range(10):
@@ -682,7 +1039,7 @@ class Level:
         # Load breakable boxes
         for box_data in level_data.get('breakable_boxes', []):
             box = BreakableBox(box_data['x'], box_data['y'], 
-                             box_data.get('has_key', False))
+                             box_data.get('has_key', False), box_data.get('is_special_flag', False))
             self.breakable_boxes.append(box)
             
         # Load NPCs
@@ -708,6 +1065,8 @@ class Level:
         # Update breakable boxes
         for box in self.breakable_boxes:
             box.update()
+            if box.is_special_flag and box.broken:
+                self.lift_blur = True
             
         # Update NPCs
         for npc in self.npcs:
@@ -744,8 +1103,8 @@ class Level:
         for fog in self.fog_particles:
             fog.draw(screen)
             
-    def draw_platforms(self, screen):
-        for platform in self.platforms:
+    def draw_platforms(self, screen, platforms):
+        for platform in platforms:
             platform_rect = platform['rect']
             is_drop_platform = not platform.get('solid', True)
             
@@ -890,124 +1249,341 @@ class Game:
             # Level 1 - Basic
             {
                 'platforms': [
+                    
+                    #(150, 700, 900, 100) 
                     (0, 700, 1200, 100),
-                    (200, 600, 200, 20),
+                    #(150, 150, 50, 600), 
+                    (150, 150, 50, 80),
+                    (150, 300, 50, 450),
+                    (1000, 150, 50, 600),
                     (500, 500, 200, 20),
-                    (800, 400, 200, 20),
+                    (200, 150, 850, 50),
                     (350, 450, 150, 20, False),  # Drop-through
                 ],
-                'player_start': (100, 600),
+                'player_start': (250, 660),
                 'doors': [
-                    {'x': 1050, 'y': 630, 'target_level': 1, 'label': 'Next'}
+                    {'x': 950, 'y': 630, 'target_level': 1, 'label': 'Next'}
+                ],
+                'breakable_boxes': [
+                    {'x': 130, 'y': 230, 'has_key': True, 'is_special_flag': True}
                 ],
                 'lights': [(600, 200), (200, 300), (1000, 250)],
                 'npcs': [
                     {
-                        'x': 600,
+                        'x': 350,
                         'y': 700,
                         'dialogues': {
-                            'default': "You cant do anything can you? Try moving to the next door",
-                            'from_1': "Back so soon? The path ahead awaits.",
-                            'from_2': "You've traveled far. Rest here.",
+                            'default': [
+                                "You can't do anything can you? Try moving to the next door",
+                                "Still here? Don't you want to get out of here?",
+                                "Go on.",
+                                "Perhaps you'll find more abilities ahead."
+                            ],
+                            'from_1': [
+                                "Back so soon? The path ahead awaits.",
+                                "You've learned to jump. Good.",
+                                "There's more to discover if you continue."
+                            ],
+                            'from_2': [
+                                "You've traveled far. Rest here.",
+                                "The darkness has taught you much.",
+                                "But your journey isn't over yet."
+                            ],
                         }
                     }
                 ],
                 'abilities': {}
             },
-            # Level 2
+            #Level 2
             {
                 'platforms': [
-                    (0, 700, 1200, 100),
-                    (100, 550, 150, 20),
-                    (350, 450, 200, 20),
-                    (650, 350, 150, 20),
-                    (900, 450, 200, 20),
-                    (250, 500, 100, 20, False),
-                    (750, 400, 100, 20, False),
+                    (150, 700, 900, 100),
+                    (150, 150, 50, 600),
+                    (1000, 150, 50, 600),
+                    (500, 500, 200, 20),
+                    (200, 150, 850, 50),
+                    (350, 450, 150, 20, False),  # Drop-through
                 ],
-                'player_start': (100, 600),
+                'player_start': (250, 660),
                 'doors': [
-                    {'x': 50, 'y': 630, 'target_level': 0, 'label': 'Back'},
-                    {'x': 1050, 'y': 630, 'target_level': 2, 'label': 'Deeper'}
+                    {'x': 850, 'y': 630, 'target_level': 0, 'label': 'Back'},
+                    {'x': 950, 'y': 630, 'target_level': 2, 'label': 'Next'}
                 ],
-                'lights': [(300, 200), (600, 150), (900, 200)],
+                'lights': [(600, 200), (200, 300), (1000, 250)],
                 'npcs': [
                     {
-                        'x': 500,
+                        'x': 350,
                         'y': 700,
                         'dialogues': {
-                            'default': "The darkness grows deeper...",
-                            'from_0': "You've taken your first steps.",
-                            'from_2': "Running from what lies ahead?",
+                            'default': [
+                                "The darkness grows deeper...",
+                                "You've gained the power to jump.",
+                                "Use it wisely, shadow walker.",
+                                "Press SPACE to defy gravity."
+                            ],
+                            'from_0': [
+                                "You've taken your first steps.",
+                                "This power is yours now - jumping.",
+                                "But greater challenges await ahead."
+                            ],
+                            'from_2': [
+                                "Running from what lies ahead?",
+                                "The double jump proved too much?",
+                                "Sometimes retreat is wisdom."
+                            ],
                         }
                     }
                 ],
                 'abilities': {'jump': True}
             },
-            # Level 3 - Double Jump
+            # Level 3 - Jump from platform
+            {
+                'platforms': [
+                    (150, 700, 900, 100),
+                    (150, 150, 50, 600),
+                    (1000, 150, 50, 600),
+                    (200, 600, 200, 20),
+                    (500, 500, 200, 20),
+                    (650, 500, 50, 200),
+                    (200, 150, 850, 50),
+                    (350, 450, 150, 20, False),  # Drop-through
+                ],
+                'player_start': (250, 660),
+                'doors': [
+                    {'x': 850, 'y': 630, 'target_level': 0, 'label': 'Back'},
+                    {'x': 950, 'y': 630, 'target_level': 3, 'label': 'Next'}
+                ],
+                'lights': [(600, 200), (200, 300), (1000, 250)],
+                'npcs': [
+                    {
+                        'x': 350,
+                        'y': 700,
+                        'dialogues': {
+                            'default': [
+                                "You've gained new strength. Jump twice, shadow walker.",
+                                "Press jump in mid-air for a second leap.",
+                                "This power will help you reach new heights.",
+                                "The final test awaits beyond that door."
+                            ],
+                            'from_0': [
+                                "Such a long journey from the start...",
+                                "You've skipped many trials to reach here.",
+                                "Impressive, but dangerous."
+                            ],
+                            'from_3': [
+                                "The end was not for you... yet.",
+                                "You need the light to break through.",
+                                "Find the key, unlock your destiny."
+                            ],
+                        }
+                    }
+                ],
+                'abilities': {}
+            },
+            #Level 4 double jump
             {
                 'platforms': [
                     (0, 700, 1200, 100),
-                    (200, 550, 100, 20),
-                    (400, 400, 100, 20),
-                    (600, 250, 100, 20),
-                    (800, 400, 100, 20),
-                    (1000, 550, 100, 20),
-                    (300, 475, 80, 20, False),
-                    (700, 325, 80, 20, False),
+                    (150, 150, 50, 600),
+                    (1000, 150, 50, 600),
+                    (200, 600, 200, 20),
+                    (500, 500, 200, 20),
+                    (650, 500, 50, 200),
+                    (500, 250, 50, 250),
+                    (200, 150, 850, 50),
+                    (350, 450, 150, 20, False),  # Drop-through
                 ],
-                'player_start': (100, 600),
+                'player_start': (250, 660),
                 'doors': [
-                    {'x': 50, 'y': 630, 'target_level': 0, 'label': 'Beginning'},
-                    {'x': 1050, 'y': 630, 'target_level': 3, 'label': 'Final'}
+                    {'x': 850, 'y': 630, 'target_level': 2, 'label': 'Back'},
+                    {'x': 950, 'y': 630, 'target_level': 4, 'label': 'Next'}
                 ],
-                'lights': [(200, 150), (600, 100), (1000, 150)],
+                'lights': [(600, 200), (200, 300), (1000, 250)],
                 'npcs': [
                     {
-                        'x': 600,
-                        'y': 250,
+                        'x': 350,
+                        'y': 700,
                         'dialogues': {
-                            'default': "You've gained new strength. Jump twice, shadow walker.",
-                            'from_0': "Such a long journey from the start...",
-                            'from_3': "The end was not for you... yet.",
+                            'default': [
+                                "You've gained new strength. Jump twice, shadow walker.",
+                                "Press jump in mid-air for a second leap.",
+                                "This power will help you reach new heights.",
+                                "The final test awaits beyond that door."
+                            ],
+                            'from_0': [
+                                "Such a long journey from the start...",
+                                "You've skipped many trials to reach here.",
+                                "Impressive, but dangerous."
+                            ],
+                            'from_3': [
+                                "The end was not for you... yet.",
+                                "You need the light to break through.",
+                                "Find the key, unlock your destiny."
+                            ],
                         }
                     }
                 ],
                 'abilities': {'double_jump': True}
             },
-            # Level 4 - Fireball and Keys
+            #Level 5 go down
             {
                 'platforms': [
-                    (0, 700, 1200, 100),
-                    (150, 600, 100, 20),
-                    (350, 500, 100, 20),
-                    (550, 600, 100, 20),
-                    (750, 500, 100, 20),
-                    (950, 600, 100, 20),
+                    (150, 700, 900, 100),
+                    (150, 150, 50, 600),
+                    (1000, 150, 50, 600),
+                    (200, 600, 200, 20),
+                    (500, 500, 200, 20),
+                    (650, 500, 50, 200),
+                    (500, 250, 50, 250),
+                    (650, 300, 50, 200),
+                    (200, 150, 850, 50),
+                    (700, 500, 300, 20, False),
+                    (350, 450, 150, 20, False),  # Drop-through
                 ],
-                'player_start': (50, 600),
+                'player_start': (250, 660),
                 'doors': [
-                    {'x': 550, 'y': 630, 'target_level': 2, 'label': 'Return'},
-                    {'x': 1100, 'y': 630, 'target_level': 0, 'label': 'End', 'locked': True}
+                    {'x': 850, 'y': 630, 'target_level': 2, 'label': 'Back'},
+                    {'x': 950, 'y': 630, 'target_level': 5, 'label': 'Next'}
                 ],
-                'lights': [(300, 200), (600, 200), (900, 200)],
-                'breakable_boxes': [
-                    {'x': 380, 'y': 460, 'has_key': True},
-                    {'x': 580, 'y': 560, 'has_key': False},
-                    {'x': 780, 'y': 460, 'has_key': False},
-                ],
+                'lights': [(600, 200), (200, 300), (1000, 250)],
                 'npcs': [
                     {
-                        'x': 400,
+                        'x': 350,
                         'y': 700,
                         'dialogues': {
-                            'default': "Light can shatter darkness. Press F to cast.",
-                            'from_2': "You've come to face the final challenge.",
-                            'from_0': "How did you get here so quickly?",
+                            'default': [
+                                "You've gained new strength. Jump twice, shadow walker.",
+                                "Press jump in mid-air for a second leap.",
+                                "This power will help you reach new heights.",
+                                "The final test awaits beyond that door."
+                            ],
+                            'from_0': [
+                                "Such a long journey from the start...",
+                                "You've skipped many trials to reach here.",
+                                "Impressive, but dangerous."
+                            ],
+                            'from_3': [
+                                "The end was not for you... yet.",
+                                "You need the light to break through.",
+                                "Find the key, unlock your destiny."
+                            ],
                         }
                     }
                 ],
-                'abilities': {'double_jump': True, 'fireball': True},
+                'abilities': {'double_jump': True}
+            },
+            # Level 6 - Fireball and Keys
+            {
+                'platforms': [
+                    (150, 700, 900, 100),
+                    (150, 150, 50, 600),
+                    (1000, 150, 50, 600),
+                    (200, 600, 200, 20),
+                    (500, 500, 200, 20),
+                    (650, 500, 50, 200),
+                    (500, 250, 50, 250),
+                    (650, 300, 50, 200),
+                    (200, 150, 850, 50),
+                    (700, 500, 300, 20, False),
+                    (350, 450, 150, 20, False),  # Drop-through
+                ],
+                'player_start': (250, 660),
+                'doors': [
+                    {'x': 850, 'y': 630, 'target_level': 2, 'label': 'Back'},
+                    {'x': 950, 'y': 630, 'target_level': 6, 'label': 'Next'}
+                ],
+                'lights': [(300, 200), (600, 200), (900, 200)],
+                'breakable_boxes': [
+                    {'x': 580, 'y': 630, 'has_key': False},
+                    {'x': 200, 'y': 530, 'has_key': False},
+                    {'x': 550, 'y': 430, 'has_key': True},
+                ],
+                'npcs': [
+                    {
+                        'x': 350,
+                        'y': 700,
+                        'dialogues': {
+                            'default': [
+                                "Light can shatter darkness. Press F to cast.",
+                                "Aim with your mouse, click F to fire.",
+                                "Break the boxes, find the key.",
+                                "Only then can you complete your journey.",
+                                "This is your final test, shadow walker."
+                            ],
+                            'from_2': [
+                                "You've come to face the final challenge.",
+                                "The power of light is yours now.",
+                                "Use it to unlock your path home."
+                            ],
+                            'from_0': [
+                                "How did you get here so quickly?",
+                                "You possess all powers already?",
+                                "Perhaps you are the chosen one..."
+                            ],
+                        }
+                    }
+                ],
+                'abilities': {'fireball': True},
+            }
+            ,
+            # Level 7 Blocked
+            {
+                'platforms': [
+                    (0, 700, 1200, 100),
+                    #(150, 150, 50, 600),
+                    (150, 150, 50, 80),
+                    (150, 300, 50, 450),
+                    (1000, 150, 50, 80),
+                    (1000, 300, 50, 450),
+                    (200, 600, 200, 20),
+                    (500, 500, 200, 20),
+                    (650, 500, 50, 200),
+                    (500, 250, 50, 250),
+                    (650, 300, 50, 200),
+                    (550, 200, 150, 100),
+                    (200, 150, 850, 50),
+                    (700, 500, 300, 20, False),
+                    (350, 450, 150, 20, False),  # Drop-through
+                ],
+                'player_start': (250, 660),
+                'doors': [
+                    {'x': 850, 'y': 630, 'target_level': 2, 'label': 'Back'},
+                    {'x': 950, 'y': 630, 'target_level': 6, 'label': 'Next'}
+                ],
+                'lights': [(300, 200), (600, 200), (900, 200)],
+                'breakable_boxes': [
+                    {'x': 580, 'y': 630, 'has_key': False},
+                    {'x': 200, 'y': 530, 'has_key': False},
+                    {'x': 550, 'y': 430, 'has_key': True},
+                    {'x': 130, 'y': 230, 'has_key': True, 'is_special_flag': True},
+                    {'x': 1000, 'y': 230, 'has_key': False},
+                ],
+                'npcs': [
+                    {
+                        'x': 350,
+                        'y': 700,
+                        'dialogues': {
+                            'default': [
+                                "Light can shatter darkness. Press F to cast.",
+                                "Aim with your mouse, click F to fire.",
+                                "Break the boxes, find the key.",
+                                "Only then can you complete your journey.",
+                                "This is your final test, shadow walker."
+                            ],
+                            'from_2': [
+                                "You've come to face the final challenge.",
+                                "The power of light is yours now.",
+                                "Use it to unlock your path home."
+                            ],
+                            'from_0': [
+                                "How did you get here so quickly?",
+                                "You possess all powers already?",
+                                "Perhaps you are the chosen one..."
+                            ],
+                        }
+                    }
+                ],
+                'abilities': {'fireball': True},
             }
         ]
         return levels
@@ -1068,7 +1644,7 @@ class Game:
         
     def draw_intermediate_level_to_surface(self, surface, level, player):
         level.draw_background(surface)
-        level.draw_platforms(surface)
+        level.draw_platforms(surface, level.platforms)
         
         for box in level.breakable_boxes:
             box.draw(surface)
@@ -1089,7 +1665,7 @@ class Game:
         
     def draw_level_to_surface(self, surface):
         self.level.draw_background(surface)
-        self.level.draw_platforms(surface)
+        self.level.draw_platforms(surface, self.level.platforms)
         
         for box in self.level.breakable_boxes:
             box.draw(surface)
@@ -1099,7 +1675,21 @@ class Game:
             
         for npc in self.level.npcs:
             npc.draw(surface, self.small_font)
-            
+        """
+        if not self.level.lift_blur:
+            self.level.draw_platforms(surface, [{
+                    'rect': pygame.Rect(0, 0, 150, 800),
+                    'solid': True
+                },
+                                                {
+                    'rect': pygame.Rect(150, 0, 900, 150),
+                    'solid': True
+                },
+                {
+                    'rect': pygame.Rect(1050, 0, 150, 800),
+                    'solid': True
+                }])
+        """
         self.player.draw(surface)
         
         # Apply dramatic lighting
@@ -1198,8 +1788,8 @@ class Game:
             keys = pygame.key.get_pressed()
             if keys[pygame.K_e]:
                 for npc in self.level.npcs:
-                    if npc.show_prompt and npc.dialogue_timer <= 0:
-                        npc.interact(self.from_level, self.current_level)
+                    if npc.show_prompt:
+                        npc.interact(self.from_level, self.current_level, mouse_pos)
                 
             # Check door collisions
             for door in self.level.doors:
