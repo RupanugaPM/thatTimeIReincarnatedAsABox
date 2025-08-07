@@ -1,8 +1,6 @@
 # That Time I Got Summoned By a Mage to Use My Intellect and Break Free From the Dungeon (TTIGSBAMTGOOTD)
 
 
-*(Feel free to replace this with your own screenshot!)*
-
 ## A Puzzle-Platformer of Wit and Magic
 
 Welcome to **"That Time I Got Summoned By a Mage to Use My Intellect and Break Free From the Dungeon"** (TTIGSBAMTGOOTD), a captivating 2D puzzle-platformer built with Pygame. You find yourself mysteriously summoned to a dark and enigmatic dungeon by a mage who is also trapped. Your shared goal is to escape, but the path is riddled with challenges that will test your intellect and reflexes. Navigate through eight perplexing floors, each with its own unique trials, and choose your path wisely, as the wrong door could lead you back to where you started.
