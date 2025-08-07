@@ -1,4 +1,4 @@
-# That Time I Got Summoned By a Mage to Use My Intellect and Break Free From the Dungeon (TTIGSBAMTGOOTD)
+# That Time I Got Summoned By a Mage to Get out of the Dungeon (TTIGSBAMTGOOTD)
 
 
 ## A Puzzle-Platformer of Wit and Magic
